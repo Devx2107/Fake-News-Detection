@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TruthLens AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+<style>
+
+/* ---------- BACKGROUND ---------- */
+
+body{
+margin:0;
+font-family:Segoe UI,Arial;
+height:100vh;
+overflow:hidden;
+background:linear-gradient(120deg,#0f172a,#1e3a8a,#6366f1);
+background-size:400% 400%;
+animation:gradientMove 20s ease infinite;
+color:white;
+}
+
+@keyframes gradientMove{
+0%{background-position:0% 50%}
+50%{background-position:100% 50%}
+100%{background-position:0% 50%}
+}
+
+/* floating blobs */
+
+body::before,
+body::after{
+content:"";
+position:absolute;
+width:500px;
+height:500px;
+border-radius:50%;
+filter:blur(140px);
+opacity:.6;
+animation:float 12s infinite alternate;
+}
+
+/* TOP LEFT BUBBLE (green-blue glass) */
+body::before{
+background:#34d399;
+top:-150px;
+left:-100px;
+}
+
+/* bottom bubble */
+body::after{
+background:#22c55e;
+bottom:-150px;
+right:-120px;
+}
+
+@keyframes float{
+0%{transform:translateY(0)}
+100%{transform:translateY(80px)}
+}
+
+/* ---------- HEADER ---------- */
+
+header{
+text-align:center;
+margin-top:30px;
+}
+
+header h1{
+font-size:46px;
+margin:0;
+}
+
+header p{
+font-size:14px;
+color:#cbd5f5;
+margin-top:5px;
+}
+
+/* ---------- GLASS CONTAINER ---------- */
+
+.container{
+width:850px;
+margin:40px auto;
+padding:35px;
+
+background:rgba(255,255,255,0.08);
+backdrop-filter:blur(20px);
+border-radius:18px;
+border:1px solid rgba(255,255,255,0.15);
+
+box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+
+/* ---------- INPUTS ---------- */
+
+textarea,input{
+width:100%;
+padding:14px;
+border-radius:10px;
+border:none;
+margin-top:12px;
+
+background:rgba(255,255,255,0.08);
+color:white;
+
+transition:.25s;
+}
+
+textarea{
+height:180px;
+resize:vertical;
+font-size:16px;
+}
+
+textarea::placeholder{
+color:white;
+opacity:.9;
+}
+
+textarea:hover,input:hover{
+box-shadow:0 0 14px #6366f1;
+}
+
+/* ---------- BUTTON ---------- */
+
+button{
+width:100%;
+padding:15px;
+margin-top:20px;
+border:none;
+border-radius:10px;
+background:#6366f1;
+color:white;
+font-size:16px;
+cursor:pointer;
+transition:.2s;
+position:relative;
+overflow:hidden;
+}
+
+/* scanning animation inside button */
+
+button.scanning{
+background:#4f46e5;
+pointer-events:none;
+}
+
+button.scanning::after{
+content:"";
+position:absolute;
+top:0;
+left:-100%;
+width:100%;
+height:100%;
+background:linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent);
+animation:scan 1.2s infinite;
+}
+
+@keyframes scan{
+0%{left:-100%}
+100%{left:100%}
+}
+
+button:hover{
+transform:translateY(-2px);
+box-shadow:0 10px 30px rgba(0,0,0,0.4);
+}
+
+/* ---------- AI STATUS ---------- */
+
+.aiStatus{
+margin-top:10px;
+font-size:14px;
+color:#cbd5f5;
+min-height:20px;
+}
+
+/* ---------- RESULT ---------- */
+
+.result{
+margin-top:30px;
+padding:25px;
+border-radius:12px;
+background:rgba(0,0,0,0.4);
+animation:fadeIn .6s ease;
+}
+
+@keyframes fadeIn{
+from{opacity:0;transform:translateY(15px)}
+to{opacity:1;transform:translateY(0)}
+}
+
+.fake{
+color:#ef4444;
+font-size:22px;
+}
+
+.real{
+color:#22c55e;
+font-size:22px;
+}
+
+/* ---------- TRUST BAR ---------- */
+
+.meter{
+height:18px;
+margin-top:15px;
+background:#1e293b;
+border-radius:10px;
+overflow:hidden;
+}
+
+.meter-fill{
+height:100%;
+width:0%;
+transition:width 1.2s ease;
+}
+
+/* ---------- HISTORY ---------- */
+
+.history{
+margin-top:30px;
+}
+
+.history-item{
+background:rgba(255,255,255,0.1);
+padding:10px;
+border-radius:6px;
+margin-top:6px;
+font-size:13px;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>🧠 TruthLens AI</h1>
+<p>Detect misinformation and verify credibility using AI</p>
+</header>
+
+<div class="container">
+
+<label>Paste news text</label>
+<textarea id="newsText"></textarea>
+
+<label>Or analyze article URL</label>
+<input id="newsUrl">
+
+<button id="analyzeBtn" onclick="analyze()">Analyze News</button>
+
+<div class="aiStatus" id="aiStatus"></div>
+
+<div id="resultBox" class="result" style="display:none">
+
+<div id="prediction"></div>
+
+<div class="meter">
+<div id="credBar" class="meter-fill"></div>
+</div>
+
+<div id="details"></div>
+
+</div>
+
+<div class="history">
+<h3>Recent Checks</h3>
+<div id="history"></div>
+</div>
+
+</div>
+
+<script>
+
+/* ---------- TYPEWRITER PLACEHOLDER ---------- */
+
+const examples=[
+"Scientists claim drinking hot water cures all diseases...",
+"Breaking: Aliens discovered beneath Antarctica...",
+"NASA launches next generation telescope into deep space..."
+]
+
+let exampleIndex=0
+let charIndex=0
+const textarea=document.getElementById("newsText")
+
+function typePlaceholder(){
+
+if(charIndex < examples[exampleIndex].length){
+textarea.placeholder += examples[exampleIndex].charAt(charIndex)
+charIndex++
+setTimeout(typePlaceholder,35)
+}
+else{
+setTimeout(()=>{
+textarea.placeholder=""
+charIndex=0
+exampleIndex=(exampleIndex+1)%examples.length
+typePlaceholder()
+},2000)
+}
+
+}
+
+typePlaceholder()
+
+/* ---------- AI STATUS ---------- */
+
+function showAIThinking(){
+
+const steps=[
+"AI scanning article...",
+"Checking misinformation patterns...",
+"Running credibility model...",
+"Generating explanation..."
+]
+
+let i=0
+const status=document.getElementById("aiStatus")
+
+function next(){
+if(i < steps.length){
+status.innerText=steps[i]
+i++
+setTimeout(next,700)
+}
+}
+
+next()
+
+}
+
+/* ---------- TYPEWRITER EXPLANATION (3x faster) ---------- */
+
+function typeExplanation(html){
+
+const container=document.getElementById("details")
+container.innerHTML=""
+
+let i=0
+
+function type(){
+if(i < html.length){
+container.innerHTML += html.charAt(i)
+i++
+setTimeout(type,4)
+}
+}
+
+type()
+
+}
+
+/* ---------- ANALYZE ---------- */
+
+async function analyze(){
+
+let text=document.getElementById("newsText").value
+let url=document.getElementById("newsUrl").value
+let button=document.getElementById("analyzeBtn")
+
+if(!text && !url){
+alert("Enter text or URL")
+return
+}
+
+button.classList.add("scanning")
+button.innerText="Scanning..."
+
+showAIThinking()
+
+let response=await fetch("/predict",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({text:text,url:url})
+})
+
+let data=await response.json()
+
+button.classList.remove("scanning")
+button.innerText="Analyze News"
+
+confetti({
+particleCount:80,
+spread:70,
+origin:{y:0.7}
+})
+
+document.getElementById("aiStatus").innerText=""
+document.getElementById("resultBox").style.display="block"
+
+let pred=document.getElementById("prediction")
+
+if(data.prediction=="Fake News"){
+pred.innerHTML="🚨 Fake News"
+pred.className="fake"
+}else{
+pred.innerHTML="✅ Real News"
+pred.className="real"
+}
+
+let bar=document.getElementById("credBar")
+bar.style.width=data.credibility+"%"
+
+if(data.credibility<40){
+bar.style.background="#ef4444"
+}
+else if(data.credibility<70){
+bar.style.background="#f59e0b"
+}
+else{
+bar.style.background="#22c55e"
+}
+
+let explanationHTML =
+"<b>Confidence:</b> "+data.confidence+"%<br>"+
+"<b>Trust Score:</b> "+data.credibility+"/100<br>"+
+"<b>Category:</b> "+data.category+"<br>"+
+"<b>Fact Check:</b> "+data.fact_check+"<br><br>"+
+"<b>Explanation:</b> "+data.explanation
+
+typeExplanation(explanationHTML)
+
+loadHistory()
+
+}
+
+/* ---------- HISTORY ---------- */
+
+async function loadHistory(){
+
+let res=await fetch("/history")
+let data=await res.json()
+
+let container=document.getElementById("history")
+container.innerHTML=""
+
+data.reverse().forEach(item=>{
+
+let div=document.createElement("div")
+div.className="history-item"
+
+div.innerHTML="<b>"+item.prediction+"</b> ("+item.confidence+"%)<br>"+item.text
+
+container.appendChild(div)
+
+})
+
+}
+
+loadHistory()
+
+</script>
+
+</body>
+</html>
